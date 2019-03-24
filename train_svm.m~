@@ -1,0 +1,185 @@
+% run('../vlfeat-0.9.20/toolbox/vl_setup')
+% load('pos_neg_feats.mat')
+
+
+lambda = 0.001;
+
+[w,b,l] = cross_val(lambda);
+
+filename = ['aug_pos_neg_feats.mat'];
+load(filename);
+
+
+train_pos = pos_feats(1:end,:);
+train_neg = neg_feats(1:end,:);
+
+feats_train = cat(1,train_pos,train_neg);
+labels_train = cat(1,ones(size(train_pos,1),1),-1.*ones(size(val_neg,1),1));
+
+train_svm_on_whole(l,
+
+
+function [w,b,l] = cross_val(lambda)
+    filename = ['aug_pos_neg_feats.mat'];
+    load(filename);
+    best_l=0;
+    
+    [pos_examples,~] = size(pos_feats);
+    
+    set_size = floor(0.1 * pos_examples);
+    best_err = -Inf;
+    for i=0:9,
+        val_pos = pos_feats(i*set_size +1:(i+1)*set_size,:);
+        val_neg = neg_feats(i*set_size +1:(i+1)*set_size,:);
+        
+        if i == 0,
+            train_pos = pos_feats((i+1)*set_size+1:end,:);
+            train_neg = neg_feats((i+1)*set_size+1:end,:);
+        else,
+            train_pos = [pos_feats(1:i*set_size,:); ...
+                pos_feats((i+1)*set_size+1:end,:)];
+            train_neg = [neg_feats(1:i*set_size,:); ...
+                neg_feats((i+1)*set_size+1:end,:)];
+        end
+        
+       
+        feats_train = cat(1,train_pos,train_neg);
+        feats_val = cat(1,val_pos,val_neg);
+        labels_train = cat(1,ones(size(train_pos,1),1),-1*ones(size(train_neg,1),1));
+        labels_val = cat(1,ones(size(val_pos,1),1),-1*ones(size(val_neg,1),1));
+        
+        feats_train = (feats_train - mean(feats_train(:)))/(std(feats_train(:)));
+        feats_val = (feats_val - mean(feats_val(:)))/(std(feats_val(:)));
+       
+        [w,b,e] =train_aug_svm(lambda*(10.^i),feats_train,labels_train,feats_val,labels_val);
+        if e > best_err,
+            best_err = e
+            best_w = w;
+            best_b = b;
+            best_l = lambda*(10.^i);
+        end
+        e
+        best_l
+    end
+    
+    w = best_w;
+    b = best_b;
+    l = best_l;
+    
+    train_svm_with_weight(l,feats_train,labels_train,feats_val,labels_val,w,b);
+
+    
+        
+  
+        
+    
+    
+    
+    
+    
+    
+end
+    
+
+function [w,b,e] = train_aug_svm(lambda,feats_train,labels_train,feats_val,labels_val)
+
+    sd = randi([1 2^32]);
+    rng(sd);
+    feats_train = feats_train(randperm(size(feats_train,1)),:);
+    rng(sd);
+    labels_train = labels_train(randperm(size(labels_train,1)),:);
+
+    
+    [w,b,INFO] = vl_svmtrain(feats_train',labels_train',lambda,'Solver','SGD','Loss','L1');
+    INFO
+    fprintf('Classifier performance on train data:\n')
+    confidences = feats_train*w + b;
+
+    [tp_rate, fp_rate, tn_rate, fn_rate] =  report_accuracy(confidences, labels_train);
+
+
+    fprintf('Classifier performance on validation dloata:\n')
+    sd = randi([1 2^32]);
+    rng(sd);
+    feats_val = feats_val(randperm(size(feats_val,1)),:);
+    rng(sd);
+    labels_val = labels_val(randperm(size(labels_val,1)),:);
+    
+    confidences = feats_val*w + b;
+
+    [tp_rate, fp_rate, tn_rate, fn_rate] =  report_accuracy(confidences, labels_val);
+    
+    precision = tp_rate/(tp_rate+fp_rate);
+    recall = tp_rate/(tp_rate+fn_rate);
+    f1_score = 2 * ((precision*recall)/(precision+recall));
+    e = f1_score;
+  
+    
+
+end
+
+function [w,b,e] = train_svm_with_weight(lambda,feats_train,labels_train,feats_val,labels_val,weight,bias)
+    sd = randi([1 2^32]);
+    rng(sd);
+    feats_train = feats_train(randperm(size(feats_train,1)),:);
+    rng(sd);
+    labels_train = labels_train(randperm(size(labels_train,1)),:);
+
+    
+%     [w,b,INFO] = vl_svmtrain(feats_train',labels_train',lambda,'MaxNumIterations',10000,'Epsilon',1e-5,'Solver','SGD','Loss','L1');
+    [w,b,INFO] = vl_svmtrain(feats_train',labels_train',lambda,'Solver','SGD','Loss','L1','model',weight,'bias',bias);
+    INFO
+    fprintf('PT Classifier performance on train data:\n')
+    confidences = feats_train*w + b;
+
+    [tp_rate, fp_rate, tn_rate, fn_rate] =  report_accuracy(confidences, labels_train);
+
+
+    fprintf('Classifier performance on validation dloata:\n')
+    sd = randi([1 2^32]);
+    rng(sd);
+    feats_val = feats_val(randperm(size(feats_val,1)),:);
+    rng(sd);
+    labels_val = labels_val(randperm(size(labels_val,1)),:);
+    
+    confidences = feats_val*w + b;
+    [~,~,~,scores] = vl_svmtrain(feats_val',labels_val',0,'model',w,'bias',b,'solver','none');
+    scores
+
+    [tp_rate, fp_rate, tn_rate, fn_rate] =  report_accuracy(confidences, labels_val);
+    
+    precision = tp_rate/(tp_rate+fp_rate);
+    recall = tp_rate/(tp_rate+fn_rate);
+    f1_score = 2 * ((precision*recall)/(precision+recall));
+    e = f1_score;
+    
+    save('mysvm.mat','w','b');
+    
+
+end
+
+function [w,b] = train_svm_on_whole(lambda,feats_train,labels_train),
+    sd = randi([1 2^32]);
+    rng(sd);
+    feats_train = feats_train(randperm(size(feats_train,1)),:);
+    rng(sd);
+    labels_train = labels_train(randperm(size(labels_train,1)),:);
+
+    
+    [w,b,INFO] = vl_svmtrain(feats_train',labels_train',lambda,'Solver','SGD','Loss','L1');
+    INFO
+    fprintf('Classifier performance on train data:\n')
+    confidences = feats_train*w + b;
+
+    [tp_rate, fp_rate, tn_rate, fn_rate] =  report_accuracy(confidences, labels_train);
+    
+    precision = tp_rate/(tp_rate+fp_rate);
+    recall = tp_rate/(tp_rate+fn_rate);
+    f1_score = 2 * ((precision*recall)/(precision+recall))
+    e = f1_score;
+
+
+
+
+
+
