@@ -22,3 +22,10 @@ For running the detector, we use a sliding window function to establish candidat
 To run, first load the SVM weights with `load('mysvm.mat')`
 To run on an example image provided in this repo, run `detect_class`. 
 In general, you can run `detect`, as long as the `imageDir` variable in `detect.m` is set to the correct one.
+
+## Examples
+
+![](hendrix_test.png)
+![](trek_test.png)
+![](soccer_test.png)
+![](class_test.png)
